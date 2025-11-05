@@ -134,28 +134,30 @@ Singleton {
     property int settingsVersion: root.settingsVersion
     property bool setupCompleted: false
 
-    // bar
+    // bar - Per-monitor configuration support
     property JsonObject bar: JsonObject {
-      property string position: "top" // "top", "bottom", "left", or "right"
-      property real backgroundOpacity: 1.0
-      property list<string> monitors: []
-      property string density: "default" // "compact", "default", "comfortable"
-      property bool showCapsule: true
+      // Sync all monitors toggle - when true, all monitors use the "default" config
+      property bool syncAcrossMonitors: false
 
-      // Floating bar settings
+      // Per-monitor configurations stored as array of objects
+      // Each object has: { monitorName: "DP-1", position: "top", ... }
+      property list<var> monitorsConfig: []
+
+      // Monitor visibility filter - controls which monitors show the bar
+      // Empty array = show on all monitors
+      property list<string> monitors: []
+
+      // Legacy properties for backward compatibility (will be migrated)
+      property string position: "top"
+      property real backgroundOpacity: 1.0
+      property string density: "default"
+      property bool showCapsule: true
       property bool floating: false
       property real marginVertical: 0.25
       property real marginHorizontal: 0.25
-
-      // Bar outer corners (inverted/concave corners at bar edges when not floating)
       property bool outerCorners: true
-
-      // Reserves space with compositor
       property bool exclusive: true
-
-      // Widget configuration for modular bar system
-      property JsonObject widgets
-      widgets: JsonObject {
+      property JsonObject widgets: JsonObject {
         property list<var> left: [{
             "id": "SystemMonitor"
           }, {
@@ -456,6 +458,152 @@ Singleton {
   }
 
   // -----------------------------------------------------
+  // Helper functions for per-monitor bar configuration
+
+  // Get the default bar configuration object
+  function getDefaultBarConfig() {
+    return {
+      "position": "top",
+      "backgroundOpacity": 1.0,
+      "density": "default",
+      "showCapsule": true,
+      "floating": false,
+      "marginVertical": 0.25,
+      "marginHorizontal": 0.25,
+      "outerCorners": true,
+      "exclusive": true,
+      "widgets": {
+        "left": [{
+            "id": "SystemMonitor"
+          }, {
+            "id": "ActiveWindow"
+          }, {
+            "id": "MediaMini"
+          }],
+        "center": [{
+            "id": "Workspace"
+          }],
+        "right": [{
+            "id": "ScreenRecorder"
+          }, {
+            "id": "Tray"
+          }, {
+            "id": "NotificationHistory"
+          }, {
+            "id": "Battery"
+          }, {
+            "id": "Volume"
+          }, {
+            "id": "Brightness"
+          }, {
+            "id": "Clock"
+          }, {
+            "id": "ControlCenter"
+          }]
+      }
+    }
+  }
+
+  // Get bar configuration for a specific monitor
+  function getMonitorBarConfig(monitorName) {
+    // If syncing across monitors, use the default config
+    if (adapter.bar.syncAcrossMonitors) {
+      // Find the "default" config entry
+      for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+        if (adapter.bar.monitorsConfig[i].monitorName === "default") {
+          return adapter.bar.monitorsConfig[i]
+        }
+      }
+      return getDefaultBarConfig()
+    }
+
+    // Try to find monitor-specific config
+    for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+      if (adapter.bar.monitorsConfig[i].monitorName === monitorName) {
+        return adapter.bar.monitorsConfig[i]
+      }
+    }
+
+    // Fallback to default config
+    for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+      if (adapter.bar.monitorsConfig[i].monitorName === "default") {
+        return adapter.bar.monitorsConfig[i]
+      }
+    }
+
+    // Last resort: return hardcoded defaults
+    return getDefaultBarConfig()
+  }
+
+  // Set bar configuration for a specific monitor
+  function setMonitorBarConfig(monitorName, config) {
+    // Add monitorName to the config object
+    var configWithName = JSON.parse(JSON.stringify(config))
+    configWithName.monitorName = monitorName
+
+    // Find and replace existing config, or append if not found
+    var found = false
+    var newConfigs = []
+
+    for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+      if (adapter.bar.monitorsConfig[i].monitorName === monitorName) {
+        newConfigs.push(configWithName)
+        found = true
+      } else {
+        newConfigs.push(adapter.bar.monitorsConfig[i])
+      }
+    }
+
+    if (!found) {
+      newConfigs.push(configWithName)
+    }
+
+    adapter.bar.monitorsConfig = newConfigs
+  }
+
+  // Ensure a monitor has a configuration (creates from default if missing)
+  function ensureMonitorBarConfig(monitorName) {
+    // Check if config already exists
+    for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+      if (adapter.bar.monitorsConfig[i].monitorName === monitorName) {
+        return
+        // Already exists
+      }
+    }
+
+    // Try to copy from first available monitor (not "default")
+    var firstMonitorConfig = null
+    for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+      if (adapter.bar.monitorsConfig[i].monitorName !== "default") {
+        firstMonitorConfig = adapter.bar.monitorsConfig[i]
+        break
+      }
+    }
+
+    if (firstMonitorConfig) {
+      Logger.i("Settings", `Creating config for new monitor ${monitorName} by copying from ${firstMonitorConfig.monitorName}`)
+      var sourceConfig = JSON.parse(JSON.stringify(firstMonitorConfig))
+      delete sourceConfig.monitorName // Remove the old monitor name
+      setMonitorBarConfig(monitorName, sourceConfig)
+    } else {
+      // Try to use default config
+      for (var i = 0; i < adapter.bar.monitorsConfig.length; i++) {
+        if (adapter.bar.monitorsConfig[i].monitorName === "default") {
+          Logger.i("Settings", `Creating config for new monitor ${monitorName} from default`)
+          var defaultConfig = JSON.parse(JSON.stringify(adapter.bar.monitorsConfig[i]))
+          delete defaultConfig.monitorName
+          setMonitorBarConfig(monitorName, defaultConfig)
+          return
+        }
+      }
+
+      // Last resort: use hardcoded defaults
+      Logger.i("Settings", `Creating config for new monitor ${monitorName} with hardcoded defaults`)
+      setMonitorBarConfig(monitorName, getDefaultBarConfig())
+    }
+  }
+
+  // -----------------------------------------------------
   // Public function to trigger immediate settings saving
   function saveImmediate() {
     settingsFileView.writeAdapter()
@@ -495,10 +643,10 @@ Singleton {
     }
 
     Logger.d("Settings", "Available monitors: [" + availableScreenNames.join(", ") + "]")
-    Logger.d("Settings", "Configured bar monitors: [" + adapter.bar.monitors.join(", ") + "]")
 
-    // Check bar monitors
-    if (adapter.bar.monitors.length > 0) {
+    // Validate bar monitor visibility filter
+    if (adapter.bar.monitors && adapter.bar.monitors.length > 0) {
+      Logger.d("Settings", "Configured bar monitor filter: [" + adapter.bar.monitors.join(", ") + "]")
       var hasValidBarMonitor = false
       for (var j = 0; j < adapter.bar.monitors.length; j++) {
         if (availableScreenNames.includes(adapter.bar.monitors[j])) {
@@ -507,16 +655,78 @@ Singleton {
         }
       }
       if (!hasValidBarMonitor) {
-        Logger.w("Settings", "No configured bar monitors found on system, clearing bar monitor list to show on all screens")
+        Logger.w("Settings", "No configured bar monitors found on system, clearing bar monitor filter list")
         adapter.bar.monitors = []
-      } else {
-
-        //Logger.i("Settings", "Found valid bar monitors, keeping configuration")
       }
-    } else {
-
-      //Logger.i("Settings", "Bar monitor list is empty, will show on all available screens")
     }
+
+    // Ensure all connected monitors have configurations
+    for (var k = 0; k < availableScreenNames.length; k++) {
+      ensureMonitorBarConfig(availableScreenNames[k])
+    }
+  }
+
+  // -----------------------------------------------------
+  // Migrate old bar settings structure to per-monitor configuration
+  function migrateBarSettingsToPerMonitor() {
+    // Check if migration is needed - look for non-empty monitorsConfig array
+    var hasMonitorConfigs = adapter.bar.monitorsConfig && adapter.bar.monitorsConfig.length > 0
+
+    // If we already have monitor configs, no migration needed
+    if (hasMonitorConfigs) {
+      return
+    }
+
+    // Check if we have the old structure (widgets property exists at bar level)
+    if (!adapter.bar.widgets || !adapter.bar.widgets.left) {
+      return
+    }
+
+    Logger.i("Settings", "Migrating bar configuration to per-monitor structure")
+
+    // Build the old configuration object from legacy properties
+    var oldConfig = {
+      "position": adapter.bar.position || "top",
+      "backgroundOpacity": adapter.bar.backgroundOpacity !== undefined ? adapter.bar.backgroundOpacity : 1.0,
+      "density": adapter.bar.density || "default",
+      "showCapsule": adapter.bar.showCapsule !== undefined ? adapter.bar.showCapsule : true,
+      "floating": adapter.bar.floating !== undefined ? adapter.bar.floating : false,
+      "marginVertical": adapter.bar.marginVertical !== undefined ? adapter.bar.marginVertical : 0.25,
+      "marginHorizontal": adapter.bar.marginHorizontal !== undefined ? adapter.bar.marginHorizontal : 0.25,
+      "outerCorners": adapter.bar.outerCorners !== undefined ? adapter.bar.outerCorners : true,
+      "exclusive": adapter.bar.exclusive !== undefined ? adapter.bar.exclusive : true,
+      "widgets": {
+        "left": [],
+        "center": [],
+        "right": []
+      }
+    }
+
+    // Copy widgets
+    if (adapter.bar.widgets.left) {
+      oldConfig.widgets.left = JSON.parse(JSON.stringify(adapter.bar.widgets.left))
+    }
+    if (adapter.bar.widgets.center) {
+      oldConfig.widgets.center = JSON.parse(JSON.stringify(adapter.bar.widgets.center))
+    }
+    if (adapter.bar.widgets.right) {
+      oldConfig.widgets.right = JSON.parse(JSON.stringify(adapter.bar.widgets.right))
+    }
+
+    // Apply this config to all current monitors
+    for (var i = 0; i < Quickshell.screens.length; i++) {
+      var screenName = Quickshell.screens[i].name
+      Logger.i("Settings", `Applying migrated bar config to monitor: ${screenName}`)
+      setMonitorBarConfig(screenName, oldConfig)
+    }
+
+    // Also set as default config
+    setMonitorBarConfig("default", oldConfig)
+
+    // Set syncAcrossMonitors to false (user can enable it if they want)
+    adapter.bar.syncAcrossMonitors = false
+
+    Logger.i("Settings", "Bar configuration migration complete")
   }
 
   // -----------------------------------------------------
@@ -529,6 +739,9 @@ Singleton {
       Qt.callLater(upgradeSettingsData)
       return
     }
+
+    // Migrate old bar configuration to per-monitor structure
+    migrateBarSettingsToPerMonitor()
 
     // TEMP - disable Open panels on overlay which used to be true by default.
     if (adapter.settingsVersion < 18) {
@@ -544,88 +757,128 @@ Singleton {
 
     const sections = ["left", "center", "right"]
 
-    // -----------------
-    // 1st. convert old widget id to new id
-    for (var s = 0; s < sections.length; s++) {
-      const sectionName = sections[s]
-      for (var i = 0; i < adapter.bar.widgets[sectionName].length; i++) {
-        var widget = adapter.bar.widgets[sectionName][i]
+    // Upgrade widgets for all monitor configurations
+    upgradeAllMonitorWidgets(sections)
+  }
 
-        switch (widget.id) {
-        case "DarkModeToggle":
-          widget.id = "DarkMode"
-          break
-        case "PowerToggle":
-          widget.id = "SessionMenu"
-          break
-        case "ScreenRecorderIndicator":
-          widget.id = "ScreenRecorder"
-          break
-        case "SidePanelToggle":
-          widget.id = "ControlCenter"
-          break
-        }
+  // -----------------------------------------------------
+  // Upgrade widgets across all monitor configurations
+  function upgradeAllMonitorWidgets(sections) {
+    // Iterate over all monitor configurations
+    var monitorNames = []
+    for (var key in adapter.bar.monitorsConfig) {
+      if (adapter.bar.monitorsConfig.hasOwnProperty(key)) {
+        monitorNames.push(key)
       }
     }
 
-    // -----------------
-    // 2nd. remove any non existing widget type
-    var removedWidget = false
-    for (var s = 0; s < sections.length; s++) {
-      const sectionName = sections[s]
-      const widgets = adapter.bar.widgets[sectionName]
-      // Iterate backward through the widgets array, so it does not break when removing a widget
-      for (var i = widgets.length - 1; i >= 0; i--) {
-        var widget = widgets[i]
-        if (!BarWidgetRegistry.hasWidget(widget.id)) {
-          Logger.w(`Settings`, `Deleted invalid widget ${widget.id}`)
-          widgets.splice(i, 1)
-          removedWidget = true
-        }
+    for (var m = 0; m < monitorNames.length; m++) {
+      var monitorName = monitorNames[m]
+      var monitorConfig = adapter.bar.monitorsConfig[monitorName]
+
+      if (!monitorConfig || !monitorConfig.widgets) {
+        continue
       }
-    }
 
-    // -----------------
-    // 3nd. upgrade widget settings
-    for (var s = 0; s < sections.length; s++) {
-      const sectionName = sections[s]
-      for (var i = 0; i < adapter.bar.widgets[sectionName].length; i++) {
-        var widget = adapter.bar.widgets[sectionName][i]
+      Logger.d("Settings", `Upgrading widgets for monitor: ${monitorName}`)
 
-        // Check if widget registry supports user settings, if it does not, then there is nothing to do
-        const reg = BarWidgetRegistry.widgetMetadata[widget.id]
-        if ((reg === undefined) || (reg.allowUserSettings === undefined) || !reg.allowUserSettings) {
-          continue
-        }
-
-        if (upgradeWidget(widget)) {
-          Logger.d("Settings", `Upgraded ${widget.id} widget:`, JSON.stringify(widget))
-        }
-      }
-    }
-
-    // -----------------
-    // 4th. safety check
-    // if a widget was deleted, ensure we still have a control center
-    if (removedWidget) {
-      var gotControlCenter = false
+      // -----------------
+      // 1st. convert old widget id to new id
       for (var s = 0; s < sections.length; s++) {
         const sectionName = sections[s]
-        for (var i = 0; i < adapter.bar.widgets[sectionName].length; i++) {
-          var widget = adapter.bar.widgets[sectionName][i]
-          if (widget.id === "ControlCenter") {
-            gotControlCenter = true
+        if (!monitorConfig.widgets[sectionName])
+          continue
+
+        for (var i = 0; i < monitorConfig.widgets[sectionName].length; i++) {
+          var widget = monitorConfig.widgets[sectionName][i]
+
+          switch (widget.id) {
+          case "DarkModeToggle":
+            widget.id = "DarkMode"
+            break
+          case "PowerToggle":
+            widget.id = "SessionMenu"
+            break
+          case "ScreenRecorderIndicator":
+            widget.id = "ScreenRecorder"
+            break
+          case "SidePanelToggle":
+            widget.id = "ControlCenter"
             break
           }
         }
       }
 
-      if (!gotControlCenter) {
-        //const obj = JSON.parse('{"id": "ControlCenter"}');
-        adapter.bar.widgets["right"].push(({
-                                             "id": "ControlCenter"
-                                           }))
-        Logger.w("Settings", "Added a ControlCenter widget to the right section")
+      // -----------------
+      // 2nd. remove any non existing widget type
+      var removedWidget = false
+      for (var s = 0; s < sections.length; s++) {
+        const sectionName = sections[s]
+        if (!monitorConfig.widgets[sectionName])
+          continue
+
+        const widgets = monitorConfig.widgets[sectionName]
+        // Iterate backward through the widgets array, so it does not break when removing a widget
+        for (var i = widgets.length - 1; i >= 0; i--) {
+          var widget = widgets[i]
+          if (!BarWidgetRegistry.hasWidget(widget.id)) {
+            Logger.w(`Settings`, `Deleted invalid widget ${widget.id} from ${monitorName}`)
+            widgets.splice(i, 1)
+            removedWidget = true
+          }
+        }
+      }
+
+      // -----------------
+      // 3rd. upgrade widget settings
+      for (var s = 0; s < sections.length; s++) {
+        const sectionName = sections[s]
+        if (!monitorConfig.widgets[sectionName])
+          continue
+
+        for (var i = 0; i < monitorConfig.widgets[sectionName].length; i++) {
+          var widget = monitorConfig.widgets[sectionName][i]
+
+          // Check if widget registry supports user settings, if it does not, then there is nothing to do
+          const reg = BarWidgetRegistry.widgetMetadata[widget.id]
+          if ((reg === undefined) || (reg.allowUserSettings === undefined) || !reg.allowUserSettings) {
+            continue
+          }
+
+          if (upgradeWidget(widget)) {
+            Logger.d("Settings", `Upgraded ${widget.id} widget on ${monitorName}:`, JSON.stringify(widget))
+          }
+        }
+      }
+
+      // -----------------
+      // 4th. safety check
+      // if a widget was deleted, ensure we still have a control center
+      if (removedWidget) {
+        var gotControlCenter = false
+        for (var s = 0; s < sections.length; s++) {
+          const sectionName = sections[s]
+          if (!monitorConfig.widgets[sectionName])
+            continue
+
+          for (var i = 0; i < monitorConfig.widgets[sectionName].length; i++) {
+            var widget = monitorConfig.widgets[sectionName][i]
+            if (widget.id === "ControlCenter") {
+              gotControlCenter = true
+              break
+            }
+          }
+        }
+
+        if (!gotControlCenter) {
+          if (!monitorConfig.widgets["right"]) {
+            monitorConfig.widgets["right"] = []
+          }
+          monitorConfig.widgets["right"].push({
+                                                "id": "ControlCenter"
+                                              })
+          Logger.w("Settings", `Added a ControlCenter widget to ${monitorName} right section`)
+        }
       }
     }
   }

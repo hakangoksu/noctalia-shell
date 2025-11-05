@@ -13,13 +13,16 @@ import qs.Commons
 PanelWindow {
   id: root
 
-  property bool exclusive: Settings.data.bar.exclusive !== undefined ? Settings.data.bar.exclusive : false
+  // Get monitor-specific configuration
+  readonly property var monitorConfig: screen ? Settings.getMonitorBarConfig(screen.name) : Settings.getDefaultBarConfig()
 
-  readonly property string barPosition: Settings.data.bar.position || "top"
+  property bool exclusive: monitorConfig.exclusive !== undefined ? monitorConfig.exclusive : false
+
+  readonly property string barPosition: monitorConfig.position || "top"
   readonly property bool barIsVertical: barPosition === "left" || barPosition === "right"
-  readonly property bool barFloating: Settings.data.bar.floating || false
-  readonly property real barMarginH: barFloating ? Settings.data.bar.marginHorizontal * Style.marginXL : 0
-  readonly property real barMarginV: barFloating ? Settings.data.bar.marginVertical * Style.marginXL : 0
+  readonly property bool barFloating: monitorConfig.floating || false
+  readonly property real barMarginH: barFloating ? monitorConfig.marginHorizontal * Style.marginXL : 0
+  readonly property real barMarginV: barFloating ? monitorConfig.marginVertical * Style.marginXL : 0
 
   // Invisible - just reserves space
   color: "transparent"

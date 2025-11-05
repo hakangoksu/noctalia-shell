@@ -20,12 +20,15 @@ Item {
   // Expose bar region for click-through mask
   readonly property var barRegion: barContentLoader.item?.children[0] || null
 
-  // Bar positioning properties
-  readonly property string barPosition: Settings.data.bar.position || "top"
+  // Get monitor-specific configuration
+  readonly property var monitorConfig: screen ? Settings.getMonitorBarConfig(screen.name) : Settings.getDefaultBarConfig()
+
+  // Bar positioning properties (now using monitor-specific config)
+  readonly property string barPosition: monitorConfig.position || "top"
   readonly property bool barIsVertical: barPosition === "left" || barPosition === "right"
-  readonly property bool barFloating: Settings.data.bar.floating || false
-  readonly property real barMarginH: barFloating ? Settings.data.bar.marginHorizontal * Style.marginXL : 0
-  readonly property real barMarginV: barFloating ? Settings.data.bar.marginVertical * Style.marginXL : 0
+  readonly property bool barFloating: monitorConfig.floating || false
+  readonly property real barMarginH: barFloating ? monitorConfig.marginHorizontal * Style.marginXL : 0
+  readonly property real barMarginV: barFloating ? monitorConfig.marginVertical * Style.marginXL : 0
 
   // Attachment overlap to fix hairline gap with fractional scaling
   readonly property real attachmentOverlap: 1
@@ -52,6 +55,7 @@ Item {
         return false
       }
 
+      // Use monitors array to control which monitors show the bar
       var monitors = Settings.data.bar.monitors || []
       var result = monitors.length === 0 || monitors.includes(root.screen.name)
 
@@ -92,22 +96,22 @@ Item {
           return baseHeight // Vertical bars extend via width, not height
         }
 
-        backgroundColor: Qt.alpha(Color.mSurface, Settings.data.bar.backgroundOpacity)
+        backgroundColor: Qt.alpha(Color.mSurface, root.monitorConfig.backgroundOpacity)
 
         // Floating bar rounded corners
-        topLeftRadius: Settings.data.bar.floating || topLeftInverted ? Style.radiusL : 0
-        topRightRadius: Settings.data.bar.floating || topRightInverted ? Style.radiusL : 0
-        bottomLeftRadius: Settings.data.bar.floating || bottomLeftInverted ? Style.radiusL : 0
-        bottomRightRadius: Settings.data.bar.floating || bottomRightInverted ? Style.radiusL : 0
+        topLeftRadius: root.monitorConfig.floating || topLeftInverted ? Style.radiusL : 0
+        topRightRadius: root.monitorConfig.floating || topRightInverted ? Style.radiusL : 0
+        bottomLeftRadius: root.monitorConfig.floating || bottomLeftInverted ? Style.radiusL : 0
+        bottomRightRadius: root.monitorConfig.floating || bottomRightInverted ? Style.radiusL : 0
 
-        topLeftInverted: Settings.data.bar.outerCorners && (barPosition === "bottom" || barPosition === "right")
+        topLeftInverted: root.monitorConfig.outerCorners && (barPosition === "bottom" || barPosition === "right")
         topLeftInvertedDirection: barIsVertical ? "horizontal" : "vertical"
-        topRightInverted: Settings.data.bar.outerCorners && (barPosition === "bottom" || barPosition === "left")
+        topRightInverted: root.monitorConfig.outerCorners && (barPosition === "bottom" || barPosition === "left")
         topRightInvertedDirection: barIsVertical ? "horizontal" : "vertical"
 
-        bottomLeftInverted: Settings.data.bar.outerCorners && (barPosition === "top" || barPosition === "right")
+        bottomLeftInverted: root.monitorConfig.outerCorners && (barPosition === "top" || barPosition === "right")
         bottomLeftInvertedDirection: barIsVertical ? "horizontal" : "vertical"
-        bottomRightInverted: Settings.data.bar.outerCorners && (barPosition === "top" || barPosition === "left")
+        bottomRightInverted: root.monitorConfig.outerCorners && (barPosition === "top" || barPosition === "left")
         bottomRightInvertedDirection: barIsVertical ? "horizontal" : "vertical"
 
         // No border on the bar
@@ -132,7 +136,7 @@ Item {
 
         Loader {
           anchors.fill: parent
-          sourceComponent: (Settings.data.bar.position === "left" || Settings.data.bar.position === "right") ? verticalBarComponent : horizontalBarComponent
+          sourceComponent: (root.monitorConfig.position === "left" || root.monitorConfig.position === "right") ? verticalBarComponent : horizontalBarComponent
         }
       }
     }
@@ -153,19 +157,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.left
+          model: root.monitorConfig.widgets.left
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "left",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.left.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.left.length
                           })
             Layout.alignment: Qt.AlignHCenter
           }
@@ -179,19 +183,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.center
+          model: root.monitorConfig.widgets.center
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "center",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.center.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.center.length
                           })
             Layout.alignment: Qt.AlignHCenter
           }
@@ -206,19 +210,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.right
+          model: root.monitorConfig.widgets.right
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "right",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.right.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.right.length
                           })
             Layout.alignment: Qt.AlignHCenter
           }
@@ -244,19 +248,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.left
+          model: root.monitorConfig.widgets.left
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "left",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.left.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.left.length
                           })
             Layout.alignment: Qt.AlignVCenter
           }
@@ -272,19 +276,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.center
+          model: root.monitorConfig.widgets.center
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "center",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.center.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.center.length
                           })
             Layout.alignment: Qt.AlignVCenter
           }
@@ -301,19 +305,19 @@ Item {
         spacing: Style.marginS
 
         Repeater {
-          model: Settings.data.bar.widgets.right
+          model: root.monitorConfig.widgets.right
           delegate: BarWidgetLoader {
             required property var modelData
             required property int index
 
             widgetId: modelData.id || ""
-            barDensity: Settings.data.bar.density
+            barDensity: root.monitorConfig.density
             widgetScreen: root.screen
             widgetProps: ({
                             "widgetId": modelData.id,
                             "section": "right",
                             "sectionWidgetIndex": index,
-                            "sectionWidgetsCount": Settings.data.bar.widgets.right.length
+                            "sectionWidgetsCount": root.monitorConfig.widgets.right.length
                           })
             Layout.alignment: Qt.AlignVCenter
           }

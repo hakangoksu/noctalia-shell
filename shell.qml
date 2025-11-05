@@ -292,7 +292,7 @@ ShellRoot {
           if (!parent.windowLoaded || !parent.shouldBeActive || !BarService.isVisible)
             return false
 
-          // Check if bar is configured for this screen
+          // Check if bar is configured to show on this screen
           var monitors = Settings.data.bar.monitors || []
           return monitors.length === 0 || monitors.includes(modelData?.name)
         }
