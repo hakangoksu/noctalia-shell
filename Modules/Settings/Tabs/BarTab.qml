@@ -77,6 +77,50 @@ ColumnLayout {
     Layout.fillWidth: true
     Layout.topMargin: Style.marginM
     Layout.bottomMargin: Style.marginM
+    visible: Settings.data.bar.syncAcrossMonitors
+  }
+
+  // Monitor Visibility Configuration (only shown in sync mode)
+  ColumnLayout {
+    spacing: Style.marginM
+    Layout.fillWidth: true
+    visible: Settings.data.bar.syncAcrossMonitors
+
+    NHeader {
+      label: I18n.tr("settings.bar.monitors.section.label")
+      description: I18n.tr("settings.bar.monitors.section.description")
+    }
+
+    Repeater {
+      model: Quickshell.screens || []
+      delegate: NCheckbox {
+        Layout.fillWidth: true
+        label: modelData.name || "Unknown"
+        description: {
+          const compositorScale = CompositorService.getDisplayScale(modelData.name)
+          I18n.tr("system.monitor-description", {
+                    "model": modelData.model,
+                    "width": modelData.width * compositorScale,
+                    "height": modelData.height * compositorScale,
+                    "scale": compositorScale
+                  })
+        }
+        checked: (Settings.data.bar.monitors || []).length === 0 || (Settings.data.bar.monitors || []).indexOf(modelData.name) !== -1
+        onToggled: checked => {
+                     if (checked) {
+                       Settings.data.bar.monitors = addMonitor(Settings.data.bar.monitors, modelData.name)
+                     } else {
+                       Settings.data.bar.monitors = removeMonitor(Settings.data.bar.monitors, modelData.name)
+                     }
+                   }
+      }
+    }
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+    Layout.topMargin: Style.marginM
+    Layout.bottomMargin: Style.marginM
   }
 
   // Monitor tabs - only visible when not syncing
@@ -100,6 +144,29 @@ ColumnLayout {
   NHeader {
     label: Settings.data.bar.syncAcrossMonitors ? I18n.tr("settings.bar.appearance.section.label") : `Bar Configuration - ${currentMonitorName}`
     description: Settings.data.bar.syncAcrossMonitors ? I18n.tr("settings.bar.appearance.section.description") : `Configure bar settings for monitor ${currentMonitorName}`
+  }
+
+  // Monitor visibility toggle (only shown in per-monitor mode)
+  NToggle {
+    Layout.fillWidth: true
+    visible: !Settings.data.bar.syncAcrossMonitors
+    label: `Show bar on ${currentMonitorName}`
+    description: `Enable or disable the bar on this monitor`
+    checked: (Settings.data.bar.monitors || []).length === 0 || (Settings.data.bar.monitors || []).indexOf(currentMonitorName) !== -1
+    onToggled: checked => {
+                 if (checked) {
+                   Settings.data.bar.monitors = addMonitor(Settings.data.bar.monitors, currentMonitorName)
+                 } else {
+                   Settings.data.bar.monitors = removeMonitor(Settings.data.bar.monitors, currentMonitorName)
+                 }
+               }
+  }
+
+  NDivider {
+    Layout.fillWidth: true
+    Layout.topMargin: Style.marginM
+    Layout.bottomMargin: Style.marginM
+    visible: !Settings.data.bar.syncAcrossMonitors
   }
 
   // Position
@@ -333,54 +400,6 @@ ColumnLayout {
         onDragPotentialEnded: root.handleDragEnd()
       }
     }
-  }
-
-  NDivider {
-    Layout.fillWidth: true
-    Layout.topMargin: Style.marginXL
-    Layout.bottomMargin: Style.marginXL
-  }
-
-  // Monitor Visibility Configuration
-  ColumnLayout {
-    spacing: Style.marginM
-    Layout.fillWidth: true
-
-    NHeader {
-      label: I18n.tr("settings.bar.monitors.section.label")
-      description: I18n.tr("settings.bar.monitors.section.description")
-    }
-
-    Repeater {
-      model: Quickshell.screens || []
-      delegate: NCheckbox {
-        Layout.fillWidth: true
-        label: modelData.name || "Unknown"
-        description: {
-          const compositorScale = CompositorService.getDisplayScale(modelData.name)
-          I18n.tr("system.monitor-description", {
-                    "model": modelData.model,
-                    "width": modelData.width * compositorScale,
-                    "height": modelData.height * compositorScale,
-                    "scale": compositorScale
-                  })
-        }
-        checked: (Settings.data.bar.monitors || []).indexOf(modelData.name) !== -1
-        onToggled: checked => {
-                     if (checked) {
-                       Settings.data.bar.monitors = addMonitor(Settings.data.bar.monitors, modelData.name)
-                     } else {
-                       Settings.data.bar.monitors = removeMonitor(Settings.data.bar.monitors, modelData.name)
-                     }
-                   }
-      }
-    }
-  }
-
-  NDivider {
-    Layout.fillWidth: true
-    Layout.topMargin: Style.marginXL
-    Layout.bottomMargin: Style.marginXL
   }
 
   // Widget management functions - now monitor-aware
